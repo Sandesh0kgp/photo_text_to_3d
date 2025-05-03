@@ -7,6 +7,10 @@ import trimesh
 import pyrender
 import tempfile
 import os
+import sys
+if sys.version_info < (3, 10) or sys.version_info >= (3, 11):
+    raise RuntimeError("Python 3.10 required")
+
 
 # --------------------------
 # Configuration
