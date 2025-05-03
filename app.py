@@ -2,104 +2,159 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
-import open3d as o3d
 from rembg import remove
 import trimesh
 import pyrender
+import tempfile
 import os
+
+# --------------------------
+# Configuration
+# --------------------------
+st.set_page_config(page_title="3D Generator", layout="wide")
 
 # --------------------------
 # Common Functions
 # --------------------------
-def save_obj(mesh, filename):
+def save_mesh(mesh, filename):
     mesh.export(filename)
 
 def show_3d_preview(mesh):
-    mesh = pyrender.Mesh.from_trimesh(mesh)
-    scene = pyrender.Scene()
-    scene.add(mesh)
-    viewer = pyrender.Viewer(scene, use_raymond_lighting=True, run_in_thread=True)
+    try:
+        scene = pyrender.Scene()
+        mesh = pyrender.Mesh.from_trimesh(mesh)
+        scene.add(mesh)
+        viewer = pyrender.Viewer(scene, use_raymond_lighting=True, run_in_thread=True)
+    except Exception as e:
+        st.error(f"3D preview failed: {str(e)}")
 
 # --------------------------
 # Image to 3D Pipeline
 # --------------------------
-def image_to_3d(uploaded_image, remove_bg=True):
-    # Process image
-    img = Image.open(uploaded_image)
+def image_to_mesh(uploaded_image, remove_bg=True):
+    try:
+        # Process image
+        img = Image.open(uploaded_image)
+        
+        if remove_bg:
+            img = remove(img)
+            img = np.array(img)
+        
+        # Create basic mesh (placeholder - replace with actual 3D reconstruction)
+        vertices = np.array([
+            [0, 0, 0],
+            [1, 0, 0],
+            [0.5, 1, 0],
+            [0.5, 0.5, 1]
+        ])
+        
+        faces = np.array([
+            [0, 1, 2],
+            [0, 1, 3],
+            [1, 2, 3],
+            [2, 0, 3]
+        ])
+        
+        mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+        return mesh
     
-    if remove_bg:
-        img = remove(img)
-        img = np.array(img)
-    
-    # Create point cloud (simplified)
-    color_raw = o3d.io.read_image(uploaded_image)
-    depth_raw = o3d.geometry.Image(np.zeros_like(img))
-    rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(
-        color_raw, depth_raw, convert_rgb_to_intensity=False)
-    
-    # Create mesh
-    pcd = o3d.geometry.PointCloud.create_from_rgbd_image(
-        rgbd_image,
-        o3d.camera.PinholeCameraIntrinsic(
-            o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault))
-    
-    # Poisson reconstruction
-    mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=9)
-    return mesh
+    except Exception as e:
+        st.error(f"Image processing failed: {str(e)}")
+        return None
 
 # --------------------------
-# Text to 3D Pipeline (Simplified)
+# Text to 3D Pipeline
 # --------------------------
-def text_to_3d(text):
-    # Placeholder - Real implementation needs DreamFusion/Latent-NeRF
-    # Generate simple primitive based on text
-    if "vase" in text.lower():
-        mesh = trimesh.creation.cylinder(radius=0.5, height=2)
-    elif "cube" in text.lower():
-        mesh = trimesh.creation.box()
-    else:
-        mesh = trimesh.creation.icosphere()
+def text_to_mesh(text):
+    try:
+        # Generate primitive based on text
+        text = text.lower()
+        
+        if "vase" in text:
+            mesh = trimesh.creation.cylinder(height=2, radius=0.5)
+        elif "cube" in text:
+            mesh = trimesh.creation.box()
+        elif "sphere" in text:
+            mesh = trimesh.creation.icosphere()
+        else:
+            mesh = trimesh.creation.torus()
+            
+        return mesh
     
-    return mesh
+    except Exception as e:
+        st.error(f"Text processing failed: {str(e)}")
+        return None
 
 # --------------------------
 # Streamlit UI
 # --------------------------
-st.title("3D Generator App 🎨→📦")
-
-input_type = st.radio("Choose Input Type:", ["Image", "Text"])
-
-if input_type == "Image":
-    uploaded_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
-    remove_bg = st.checkbox("Remove Background", value=True)
+def main():
+    st.title("📷➡️🪄 3D Model Generator")
     
-    if uploaded_file:
-        with st.spinner("Creating 3D model..."):
-            # Process image
-            mesh = image_to_3d(uploaded_file, remove_bg)
-            
-            # Save and show
-            save_obj(mesh, "output.obj")
-            
-            st.success("Done!")
-            st.subheader("3D Preview")
-            show_3d_preview(mesh)
-            
-            with open("output.obj", "rb") as f:
-                st.download_button("Download OBJ", f, file_name="model.obj")
+    input_type = st.radio("Select input type:", 
+                         ["Image Upload", "Text Prompt"], 
+                         horizontal=True)
+    
+    if input_type == "Image Upload":
+        st.subheader("Image to 3D Model")
+        uploaded_file = st.file_uploader("Upload an image", 
+                                       type=["png", "jpg", "jpeg"])
+        remove_bg = st.checkbox("Remove background", value=True)
+        
+        if uploaded_file and st.button("Generate 3D Model"):
+            with st.spinner("🔮 Creating magic..."):
+                with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                    tmp_file.write(uploaded_file.getvalue())
+                    mesh = image_to_mesh(tmp_file.name, remove_bg)
+                
+                if mesh:
+                    st.success("🎉 3D Model Generated!")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader("3D Preview")
+                        show_3d_preview(mesh)
+                    
+                    with col2:
+                        st.subheader("Download")
+                        with tempfile.NamedTemporaryFile(suffix=".obj") as tmp_obj:
+                            save_mesh(mesh, tmp_obj.name)
+                            with open(tmp_obj.name, "rb") as f:
+                                st.download_button(
+                                    label="Download OBJ File",
+                                    data=f,
+                                    file_name="model.obj",
+                                    mime="application/octet-stream"
+                                )
+    
+    else:
+        st.subheader("Text to 3D Model")
+        text_input = st.text_input("Enter your text prompt:", 
+                                 placeholder="e.g., 'A decorative vase'")
+        
+        if text_input and st.button("Generate 3D Model"):
+            with st.spinner("🔮 Conjuring 3D model..."):
+                mesh = text_to_mesh(text_input)
+                
+                if mesh:
+                    st.success("🎉 3D Model Generated!")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader("3D Preview")
+                        show_3d_preview(mesh)
+                    
+                    with col2:
+                        st.subheader("Download")
+                        with tempfile.NamedTemporaryFile(suffix=".obj") as tmp_obj:
+                            save_mesh(mesh, tmp_obj.name)
+                            with open(tmp_obj.name, "rb") as f:
+                                st.download_button(
+                                    label="Download OBJ File",
+                                    data=f,
+                                    file_name="text_model.obj",
+                                    mime="application/octet-stream"
+                                )
 
-elif input_type == "Text":
-    text_input = st.text_input("Enter text prompt (e.g., 'A red vase')")
-    if text_input:
-        with st.spinner("Generating 3D from text..."):
-            mesh = text_to_3d(text_input)
-            
-            # Save and show
-            save_obj(mesh, "output.obj")
-            
-            st.success("Done!")
-            st.subheader("3D Preview")
-            show_3d_preview(mesh)
-            
-            with open("output.obj", "rb") as f:
-                st.download_button("Download OBJ", f, file_name="text_model.obj")
+if __name__ == "__main__":
+    main()
