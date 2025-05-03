@@ -1,6 +1,5 @@
 streamlit==1.32.0
-rembg==2.0.50
-open3d==0.17.0
+rembg==2.0.65
 trimesh==4.0.5
 pyrender==0.1.45
 numpy==1.26.0
