@@ -1,0 +1,10 @@
+streamlit==1.32.0
+rembg==2.0.50
+open3d==0.17.0
+trimesh==4.0.5
+pyrender==0.1.45
+numpy==1.26.0
+pillow==10.2.0
+scipy==1.11.4
+pyglet==2.0.10
+networkx==3.2.1
