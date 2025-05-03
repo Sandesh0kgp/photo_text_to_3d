@@ -7,4 +7,5 @@ pillow==10.2.0
 scipy==1.11.4
 pyglet==2.0.10
 networkx==3.2.1
-onnxruntime==1.16.3  # Add this line
+onnxruntime==1.17.0  # Updated to latest compatible version
+opencv-python-headless==4.9.0.80  # Required for rembg
