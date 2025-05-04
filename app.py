@@ -211,14 +211,15 @@ def load_lgm_model(ckpt_path):
     try:
         if not torch.cuda.is_available():
             st.warning("No GPU detected. LGM model will run on CPU, which may be slow.")
-        from diffusers import DiffusionPipeline
-        model = DiffusionPipeline.from_pretrained(
+        from diffusers import StableDiffusionPipeline  # Placeholder; replace with LGM-specific pipeline
+        model = StableDiffusionPipeline.from_pretrained(
             "ashawkey/LGM",
             torch_dtype=torch.float16,
-            use_safetensors=True
+            use_safetensors=True,
+            low_cpu_mem_usage=True
         )
-        # Note: Custom checkpoint loading may differ; check LGM repo
-        model.load_checkpoint(ckpt_path)
+        # Load custom checkpoint (adjust based on LGM repo)
+        model.load_lora_weights(ckpt_path)
         model.to("cuda" if torch.cuda.is_available() else "cpu")
         return model
     except Exception as e:
@@ -228,9 +229,15 @@ def load_lgm_model(ckpt_path):
 def text_to_3d(prompt, model):
     """Generate 3D model from text prompt using LGM (placeholder)."""
     try:
-        result = model(prompt, num_inference_steps=50)
-        # Assume output is a mesh; adjust based on LGM repo
-        mesh = trimesh.Trimesh(vertices=result.vertices, faces=result.faces)
+        # Placeholder; replace with LGM-specific inference
+        result = model(
+            prompt,
+            num_inference_steps=50,
+            guidance_scale=7.5
+        ).images[0]  # Assuming LGM outputs an image or mesh
+        # Convert to mesh (adjust based on LGM output format)
+        mesh = trimesh.Trimesh(vertices=np.zeros((3, 3)), faces=np.zeros((0, 3), dtype=np.int64))
+        st.warning("Placeholder mesh generated. Update with LGM inference code.")
         return mesh
     except Exception as e:
         st.error(f"Failed to generate 3D model from text: {str(e)}")
