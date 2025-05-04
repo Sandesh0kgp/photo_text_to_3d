@@ -1,11 +1,11 @@
-streamlit==1.32.0
-rembg==2.0.65
-trimesh==4.0.5
-pyrender==0.1.45
-numpy==1.26.0
-pillow==10.2.0
-scipy==1.11.4
-pyglet==2.0.10
-networkx==3.2.1
-onnxruntime==1.17.0  # Updated to latest compatible version
-opencv-python-headless==4.9.0.80  # Required for rembg
+streamlit==1.38.0
+rembg==2.0.59
+torch==2.4.1
+torchvision==0.19.1
+opencv-python==4.10.0.84
+pillow==10.4.0
+numpy==1.26.4
+open3d==0.18.0
+huggingface_hub==0.25.0
+trimesh==4.4.9
+diffusers==0.30.3
