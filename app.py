@@ -1,4 +1,5 @@
 import streamlit as st
+import logging
 try:
     from rembg import remove
 except ImportError as e:
@@ -16,6 +17,10 @@ import os
 import tempfile
 import sys
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
 # Check Python version compatibility
 if sys.version_info < (3, 8) or sys.version_info >= (3, 13):
     st.error("This app requires Python 3.8 to 3.12. Current version: " + sys.version)
@@ -29,7 +34,8 @@ st.write("Upload a photo of a single object or enter a short text prompt to gene
 hf_token = st.text_input("Enter your Hugging Face API token (required for text-to-3D):", type="password")
 if hf_token:
     try:
-        login(token=hf_token, add_to_git_credential=False)
+        if not os.path.exists("/home/appuser/.cache/huggingface/token"):
+            login(token=hf_token, add_to_git_credential=False)
         st.success("Hugging Face API token accepted.")
     except Exception as e:
         st.error(f"Invalid Hugging Face API token: {str(e)}")
@@ -44,21 +50,32 @@ text_prompt = st.text_input("Or enter a short text prompt (e.g., 'A small toy ca
 
 # Image processing functions
 def load_image(uploaded_file):
-    """Load and convert uploaded image to RGB format."""
+    """Load and convert uploaded image to RGB format, resize for performance."""
     try:
+        logger.info("Loading image")
         image = Image.open(uploaded_file).convert("RGB")
+        # Resize to 512x512 to reduce memory usage
+        image = image.resize((512, 512), Image.Resampling.LANCZOS)
         return image
     except Exception as e:
+        logger.error(f"Error loading image: {str(e)}")
         st.error(f"Error loading image: {str(e)}")
         return None
 
 def image_to_numpy(image):
     """Convert PIL image to NumPy array."""
-    return np.array(image)
+    try:
+        logger.info("Converting image to NumPy array")
+        return np.array(image)
+    except Exception as e:
+        logger.error(f"Error converting image to NumPy: {str(e)}")
+        st.error(f"Error converting image to NumPy: {str(e)}")
+        return None
 
 def remove_background(image):
     """Remove background from image using rembg."""
     try:
+        logger.info("Removing background with rembg")
         buffered = io.BytesIO()
         image.save(buffered, format="PNG")
         image_bytes = buffered.getvalue()
@@ -66,27 +83,32 @@ def remove_background(image):
         bg_removed = Image.open(io.BytesIO(output_bytes)).convert("RGB")
         return bg_removed
     except Exception as e:
+        logger.error(f"Error removing background: {str(e)}")
         st.error(f"Error removing background: {str(e)}")
         return None
 
 def load_midas_model():
     """Load MiDaS model for depth estimation."""
     try:
-        model_type = "DPT_Large"
+        logger.info("Loading MiDaS model")
+        model_type = "DPT_Hybrid"  # Smaller model for lower memory usage
         midas = torch.hub.load("intel-isl/MiDaS", model_type, trust_repo=True)
         midas.eval()
         midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms", trust_repo=True)
         transform = midas_transforms.dpt_transform if model_type in ["DPT_Large", "DPT_Hybrid"] else midas_transforms.small_transform
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"Using device: {device}")
         midas.to(device)
         return midas, transform, device
     except Exception as e:
+        logger.error(f"Error loading MiDaS model: {str(e)}")
         st.error(f"Error loading MiDaS model: {str(e)}")
         return None, None, None
 
 def estimate_depth(image, midas, transform, device):
     """Estimate depth map from image using MiDaS."""
     try:
+        logger.info("Estimating depth with MiDaS")
         img = np.array(image)
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         input_batch = transform(img).to(device)
@@ -101,12 +123,14 @@ def estimate_depth(image, midas, transform, device):
         depth = prediction.cpu().numpy()
         return depth
     except Exception as e:
+        logger.error(f"Error estimating depth: {str(e)}")
         st.error(f"Error estimating depth: {str(e)}")
         return None
 
 def depth_to_point_cloud(depth, image):
     """Convert depth map and image to colored point cloud using vectorized operations."""
     try:
+        logger.info("Converting depth to point cloud")
         h, w = depth.shape
         fx = fy = 1  # Focal lengths (relative scale)
         cx, cy = w / 2, h / 2  # Principal point
@@ -125,12 +149,14 @@ def depth_to_point_cloud(depth, image):
 
         return points_rgb
     except Exception as e:
+        logger.error(f"Error creating point cloud: {str(e)}")
         st.error(f"Error creating point cloud: {str(e)}")
         return None
 
 def create_point_cloud(points_rgb):
     """Create Open3D point cloud from points and colors."""
     try:
+        logger.info("Creating Open3D point cloud")
         xyz = points_rgb[:, :3]
         rgb = points_rgb[:, 3:]
         pcd = o3d.geometry.PointCloud()
@@ -138,50 +164,60 @@ def create_point_cloud(points_rgb):
         pcd.colors = o3d.utility.Vector3dVector(rgb)
         return pcd
     except Exception as e:
+        logger.error(f"Error creating point cloud: {str(e)}")
         st.error(f"Error creating point cloud: {str(e)}")
         return None
 
 def estimate_normals(pcd):
     """Estimate normals for point cloud."""
     try:
+        logger.info("Estimating normals")
         pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.05, max_nn=30))
         return pcd
     except Exception as e:
+        logger.error(f"Error estimating normals: {str(e)}")
         st.error(f"Error estimating normals: {str(e)}")
         return None
 
 def reconstruct_mesh(pcd):
     """Reconstruct mesh from point cloud using Poisson reconstruction."""
     try:
+        logger.info("Reconstructing mesh")
         mesh, density = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=8)
         return mesh, density
     except Exception as e:
+        logger.error(f"Error reconstructing mesh: {str(e)}")
         st.error(f"Error reconstructing mesh: {str(e)}")
         return None, None
 
 def remove_low_density_vertices(mesh, density, threshold=0.01):
     """Remove low-density vertices from mesh."""
     try:
+        logger.info("Removing low-density vertices")
         density = np.asarray(density)
         vertices_to_keep = density > np.quantile(density, threshold)
         mesh = mesh.select_by_index(np.where(vertices_to_keep)[0])
         return mesh
     except Exception as e:
+        logger.error(f"Error removing low-density vertices: {str(e)}")
         st.error(f"Error removing low-density vertices: {str(e)}")
         return None
 
 def export_mesh(mesh, file_path="output_model.obj"):
     """Export mesh to file."""
     try:
+        logger.info(f"Exporting mesh to {file_path}")
         o3d.io.write_triangle_mesh(file_path, mesh)
         return file_path
     except Exception as e:
+        logger.error(f"Error exporting mesh: {str(e)}")
         st.error(f"Error exporting mesh: {str(e)}")
         return None
 
 def render_mesh_image(mesh):
     """Render mesh as a static image using Open3D offscreen rendering."""
     try:
+        logger.info("Rendering mesh image")
         vis = o3d.visualization.Visualizer()
         vis.create_window(width=800, height=600, visible=False)
         vis.add_geometry(mesh)
@@ -192,27 +228,31 @@ def render_mesh_image(mesh):
         vis.destroy_window()
         return np.asarray(image)
     except Exception as e:
+        logger.error(f"Error rendering mesh image: {str(e)}")
         st.error(f"Error rendering mesh image: {str(e)}")
         return None
 
 def visualize_mesh_streamlit(mesh):
     """Visualize mesh in Streamlit by rendering a static image."""
     try:
+        logger.info("Visualizing mesh in Streamlit")
         image = render_mesh_image(mesh)
         if image is not None:
             st.image(image, caption="3D Model Preview", use_column_width=True)
             st.write("Download the model to view in a 3D viewer.")
     except Exception as e:
+        logger.error(f"Error visualizing mesh: {str(e)}")
         st.error(f"Error visualizing mesh: {str(e)}")
 
 # Text-to-3D functions
 def load_lgm_model(ckpt_path):
     """Load LGM model for text-to-3D generation (placeholder)."""
     try:
+        logger.info("Loading LGM model")
         if not torch.cuda.is_available():
             st.warning("No GPU detected. LGM model will run on CPU, which may be slow.")
-        from diffusers import StableDiffusionPipeline  # Placeholder; replace with LGM-specific pipeline
-        model = StableDiffusionPipeline.from_pretrained(
+        from diffusers import DiffusionPipeline  # Placeholder; replace with LGM-specific pipeline
+        model = DiffusionPipeline.from_pretrained(
             "ashawkey/LGM",
             torch_dtype=torch.float16,
             use_safetensors=True,
@@ -221,42 +261,50 @@ def load_lgm_model(ckpt_path):
         # Load custom checkpoint (adjust based on LGM repo)
         model.load_lora_weights(ckpt_path)
         model.to("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info("LGM model loaded successfully")
         return model
     except Exception as e:
+        logger.error(f"Failed to load LGM model: {str(e)}")
         st.error(f"Failed to load LGM model: {str(e)}")
         return None
 
 def text_to_3d(prompt, model):
     """Generate 3D model from text prompt using LGM (placeholder)."""
     try:
+        logger.info(f"Generating 3D model for prompt: {prompt}")
         # Placeholder; replace with LGM-specific inference
         result = model(
             prompt,
             num_inference_steps=50,
-            guidance_scale=7.5
-        ).images[0]  # Assuming LGM outputs an image or mesh
-        # Convert to mesh (adjust based on LGM output format)
+            output_type="mesh"  # Hypothetical; adjust based on LGM output
+        )
+        # Assuming LGM outputs a mesh file or vertices/faces
         mesh = trimesh.Trimesh(vertices=np.zeros((3, 3)), faces=np.zeros((0, 3), dtype=np.int64))
-        st.warning("Placeholder mesh generated. Update with LGM inference code.")
+        st.warning("Placeholder mesh generated. Update with LGM inference code from https://github.com/ashawkey/LGM")
+        logger.info("Placeholder mesh generated")
         return mesh
     except Exception as e:
+        logger.error(f"Failed to generate 3D model from text: {str(e)}")
         st.error(f"Failed to generate 3D model from text: {str(e)}")
         return None
 
 def trimesh_to_open3d(trimesh_mesh):
     """Convert trimesh mesh to Open3D mesh."""
     try:
+        logger.info("Converting trimesh to Open3D mesh")
         o3d_mesh = o3d.geometry.TriangleMesh()
         o3d_mesh.vertices = o3d.utility.Vector3dVector(trimesh_mesh.vertices)
         o3d_mesh.triangles = o3d.utility.Vector3iVector(trimesh_mesh.faces)
         o3d_mesh.compute_vertex_normals()
         return o3d_mesh
     except Exception as e:
+        logger.error(f"Error converting trimesh to Open3D: {str(e)}")
         st.error(f"Error converting trimesh to Open3D: {str(e)}")
         return None
 
 # Main workflow
 if uploaded_image is not None:
+    logger.info("Starting image-to-3D processing")
     st.success("Image uploaded. Proceeding with image-to-3D processing.")
     image = load_image(uploaded_image)
     if image:
@@ -286,8 +334,10 @@ if uploaded_image is not None:
                                                     file_name="output_model.obj",
                                                     mime="model/obj"
                                                 )
+    logger.info("Image-to-3D processing completed")
 
 elif text_prompt.strip() != "":
+    logger.info("Starting text-to-3D processing")
     if not hf_token:
         st.error("Hugging Face API token is required for text-to-3D generation.")
     else:
@@ -311,7 +361,9 @@ elif text_prompt.strip() != "":
                                     mime="model/obj"
                                 )
         except Exception as e:
+            logger.error(f"Error in text-to-3D processing: {str(e)}")
             st.error(f"Error in text-to-3D processing: {str(e)}")
+    logger.info("Text-to-3D processing completed")
 
 else:
     st.info("Please upload an image or enter a text prompt to continue.")
