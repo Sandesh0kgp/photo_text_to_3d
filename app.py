@@ -10,6 +10,12 @@ from huggingface_hub import hf_hub_download, login
 import trimesh
 import os
 import tempfile
+import sys
+
+# Check Python version compatibility
+if sys.version_info < (3, 8) or sys.version_info >= (3, 13):
+    st.error("This app requires Python 3.8 to 3.12. Current version: " + sys.version)
+    st.stop()
 
 # App title and description
 st.title("Photo/Text to Simple 3D Model Generator")
