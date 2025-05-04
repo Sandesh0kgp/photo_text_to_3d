@@ -1,5 +1,9 @@
 import streamlit as st
-from rembg import remove
+try:
+    from rembg import remove
+except ImportError as e:
+    st.error(f"Failed to import rembg. Ensure libGL.so.1 is installed. Error: {str(e)}")
+    st.stop()
 import torch
 import cv2
 import numpy as np
@@ -36,7 +40,7 @@ else:
 uploaded_image = st.file_uploader("Upload an image (.jpg, .png)", type=["jpg", "png"])
 
 # Text input for prompt
-text_prompt = st.text_input("Or enter a short text prompt (e.g., 'A small toy car'):")
+text_prompt = st.text_function("Or enter a short text prompt (e.g., 'A small toy car'):")
 
 # Image processing functions
 def load_image(uploaded_file):
@@ -45,7 +49,7 @@ def load_image(uploaded_file):
         image = Image.open(uploaded_file).convert("RGB")
         return image
     except Exception as e:
-        st.error(f"Error loading image: {str(e)}")
+        st.error(f "Error loading image: {str(e)}")
         return None
 
 def image_to_numpy(image):
