@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.egg-info/
+
+# Streamlit
+.streamlit/*.db
+.streamlit/secrets.toml
+
+# Model checkpoints and large files
+*.safetensors
+*.pth
+*.ckpt
+output_model.obj
+temp.ply
+
+# Misc
+.DS_Store
+*.log
